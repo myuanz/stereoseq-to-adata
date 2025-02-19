@@ -143,7 +143,9 @@ def process_stereo_folder(
         save_to.mkdir(parents=True, exist_ok=True)
 
     all_data_files = list(folder.glob('total_gene_*.parquet'))
-    all_meta_files = list(folder.glob('total_gene_*.meta.json'))
+    # all_meta_files = list(folder.glob('total_gene_*.meta.json'))
+    all_meta_files = [data_file.with_suffix('.meta.json') for data_file in all_data_files]
+    all_meta_files = [f for f in all_meta_files if f.exists()]
     region_info_p = list(folder.glob('region-*.csv'))
 
     assert len(all_data_files) == len(all_meta_files), f'number of data files and meta files are not the same: {len(all_data_files)} != {len(all_meta_files)}'
