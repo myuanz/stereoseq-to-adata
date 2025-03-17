@@ -3,6 +3,7 @@ import json
 import time
 from logging import DEBUG, INFO, basicConfig, getLogger
 from pathlib import Path
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -25,7 +26,14 @@ pc = pl.col
 
 # %%
 
-def stereo_df_to_adata(df: pl.DataFrame | pd.DataFrame | Path | str, *, cell_add_prefix='cell-', verbose=False):
+def stereo_df_to_adata(
+    df: pl.DataFrame | pd.DataFrame | Path | str, *, 
+    obs_add_prefix='cell-', 
+    remove_non_cell_expr=True,
+    obs_src: Literal['cell_label', 'spot_bin']='cell_label',
+    spot_bin_size: int=50,
+    verbose=False
+):
     '''
     Convert a single stereo dataframe to an AnnData object.
     
@@ -37,7 +45,7 @@ def stereo_df_to_adata(df: pl.DataFrame | pd.DataFrame | Path | str, *, cell_add
 
     df: pl.DataFrame | Path
         the dataframe to convert
-    cell_add_prefix: str
+    obs_add_prefix: str
         the prefix to add to the cell names
     verbose: bool
         whether to print debug information
@@ -56,50 +64,71 @@ def stereo_df_to_adata(df: pl.DataFrame | pd.DataFrame | Path | str, *, cell_add
         df = pl.from_pandas(df)
 
     logger.debug(f'raw df shape: {df.shape}')
-    df = df.filter(pl.col('cell_label') != 0)
-    logger.debug(f'df after drop non-cell expr: {df.shape}')
+    if remove_non_cell_expr:
+        df = df.filter(pl.col('cell_label') != 0)
+        logger.debug(f'df after drop non-cell expr: {df.shape}')
     logger.debug(f'df columns: {df.columns}')
     has_rxry = 'rx' in df.columns and 'ry' in df.columns
     logger.debug(f'has_rxry: {has_rxry}')
 
     logger.debug('start mapping...')
     genes = df['gene'].unique().to_list()
-    cells = df['cell_label'].unique().to_list()
+
+
+    obs_key = 'cell_label'
+    
+    if obs_src == 'spot_bin':
+        df = df.with_columns(
+            (pl.col('x') // spot_bin_size).alias('bin_x'),
+            (pl.col('y') // spot_bin_size).alias('bin_y'),
+        ).with_columns(
+            ('bin-'+pl.col('bin_x').cast(pl.String)+'-'+pl.col('bin_y').cast(pl.String)).alias('bin_xy')
+        )
+        obs_key = 'bin_xy'
+
+    obs_ids: list[int] | list[str] = df[obs_key].unique().to_list()
+
     gene_map = {g: i for i, g in enumerate(genes)}
-    cell_map = {c: i for i, c in enumerate(cells)}
+    obs_map  = {o: i for i, o in enumerate(obs_ids)}
 
     df = df.with_columns(
         pl.col('gene').replace(gene_map).alias('gene_idx').cast(pl.Int64),
-        pl.col('cell_label').replace(cell_map).alias('cell_idx').cast(pl.Int64),
+        pl.col(obs_key).replace(obs_map).alias('obs_idx').cast(pl.Int64),
     )
     gene_ids = df['gene_idx'].to_numpy()
-    cell_ids = df['cell_idx'].to_numpy()
+    obs_idx = df['obs_idx'].to_numpy()
     counts = df['umi_count'].to_numpy()
 
     n_genes = len(genes)
-    n_cells = len(cells)
-    logger.debug(f'n_genes: {n_genes}, n_cells: {n_cells}')
+    n_obs   = len(obs_ids)
+    logger.debug(f'n_genes: {n_genes}, n_obs: {n_obs}')
     logger.debug('creating sparse matrix...')
-    expr_matrix = sparse.csr_matrix((counts, (cell_ids, gene_ids)), shape=(n_cells, n_genes))
+    expr_matrix = sparse.csr_matrix((counts, (obs_idx, gene_ids)), shape=(n_obs, n_genes))
     logger.debug('creating AnnData...')
     adata = sc.AnnData(expr_matrix)
     adata.var_names = genes
-    adata.obs_names = [f'{cell_add_prefix}{c}' for c in cells]
-    cell_id_with_area = df.group_by('cell_label').agg(
+    adata.obs_names = [f'{obs_add_prefix}{o}' for o in obs_ids]
+    obs_id_with_area = df.group_by(obs_key).agg(
         pc('gene_area').first(),
         pc('x').mean().alias('x'),
         pc('y').mean().alias('y'),
-        *[
+        *([
             pc('rx').mean().alias('rx'),
             pc('ry').mean().alias('ry')
-        ] if has_rxry else []
-    ).sort('cell_label')
-    adata.obs['region_global_id'] = cell_id_with_area['gene_area'].to_numpy()
+        ] if has_rxry else []),
+        *([
+            pc('bin_x').mean().alias('bin_x'),
+            pc('bin_y').mean().alias('bin_y')
+        ] if obs_src == 'spot_bin' else []),
+    ).sort(obs_key)
+    adata.obs['region_global_id'] = obs_id_with_area['gene_area'].to_numpy()
     adata.obs['region_global_id'] = adata.obs['region_global_id'].astype('category')
-    adata.obsm['spatial'] = cell_id_with_area[['x', 'y']].to_numpy()
+    adata.obsm['spatial'] = obs_id_with_area[['x', 'y']].to_numpy()
+    if obs_src == 'spot_bin':
+        adata.obsm['spatial_bin'] = obs_id_with_area[['bin_x', 'bin_y']].to_numpy()
 
     if has_rxry:
-        adata.obsm['spatial_r'] = cell_id_with_area[['rx', 'ry']].to_numpy()
+        adata.obsm['spatial_r'] = obs_id_with_area[['rx', 'ry']].to_numpy()
     logger.debug(f'done in {time.time() - t0:.2f} seconds')
     logger.setLevel(last_logger_level)
     return adata
@@ -112,7 +141,9 @@ def _load_region_info(region_info_p: Path):
 
 def process_stereo_folder(
     folder: Path|str, *, save_to: Path|str|None=None, 
-    cell_add_prefix: str='{chip}-cell-', 
+    obs_add_prefix: str='{chip}-cell-', 
+    obs_src: Literal['cell_label', 'spot_bin']='cell_label',
+    spot_bin_size: int=50,
     verbose: bool=False, 
     workers: int=4, 
     enable_tqdm: bool=True
@@ -130,8 +161,8 @@ def process_stereo_folder(
     
     save_to: Path | None
         the path to save the AnnData objects
-    cell_add_prefix: str
-        the prefix to add to the cell names
+    obs_add_prefix: str
+        the prefix to add to the observation names
     verbose: bool
         whether to print debug information
     workers: int
@@ -167,8 +198,8 @@ def process_stereo_folder(
                 logger.debug(f'{save_to_p} exists, reading existing adata...')
                 return sc.read_h5ad(save_to_p)
 
-        curr_cell_add_prefix = cell_add_prefix.format(chip=chip)
-        adata = stereo_df_to_adata(data_file, cell_add_prefix=curr_cell_add_prefix, verbose=verbose)
+        curr_obs_add_prefix = obs_add_prefix.format(chip=chip)
+        adata = stereo_df_to_adata(data_file, obs_add_prefix=curr_obs_add_prefix, obs_src=obs_src, spot_bin_size=spot_bin_size, verbose=verbose)
         adata.uns['export_meta'] = meta
         adata.obs['region_name'] = adata.obs['region_global_id'].map(region_info['origin_name'])
         if save_to is not None:
@@ -194,7 +225,16 @@ def process_stereo_folder(
 
     return adatas
 
-# # %%
+# %%
+
+# r = stereo_df_to_adata(
+#     Path('/data/data0-1/total_gene_T67_macaque_f001_2D_macaque-20240814-cla-all.parquet'),
+#     obs_src='spot_bin',
+#     # obs_src='cell_label',
+#     spot_bin_size=100,
+#     verbose=True
+# )
+
 # r = process_stereo_folder(
 #     Path('/mnt/inner-data/sde/total_gene_2D/macaque-20240814-cla-all/'), 
 #     verbose=True,

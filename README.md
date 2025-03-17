@@ -20,6 +20,8 @@ import s2a
 
 adata = s2a.stereo_df_to_adata(
     <your df or your df path>,
+    obs_src='cell_label' # cell_label or spot_bin
+    # spot_bin_size=50 # if you are using spot_bin, spot_bin_size is required
     verbose=True
 )
 print(adata)
@@ -46,12 +48,16 @@ AnnData object with n_obs × n_vars = 181398 × 15638
 ### For std folder
 
 Use Python:
-```
+
+```python
 import s2a
 
 adatas = s2a.process_stereo_folder(
     <your df folder>,
     save_to=<folder to save adatas>,
+    obs_src='cell_label' # cell_label or spot_bin
+    # spot_bin_size=50 # if you are using spot_bin, spot_bin_size is required
+
 )
 print(adatas, end='\n...\n')
 print(adatas[0].obs, end='\n...\n')
@@ -130,7 +136,6 @@ Related parameters are the same as above
 ```bash
 $ python -m process_stereo_folder --help
 
-
 usage: process-stereo-folder [-h] [OPTIONS]
 
 Process a folder of stereo dataframes. Folder format should be zhengmingyuan's format:
@@ -144,8 +149,8 @@ Process a folder of stereo dataframes. Folder format should be zhengmingyuan's f
     ...
 
 save_to: Path | None
-    the path to save the AnnData objects cell_add_prefix: str
-    the prefix to add to the cell names verbose: bool
+    the path to save the AnnData objects obs_add_prefix: str
+    the prefix to add to the observation names verbose: bool
     whether to print debug information workers: int
     the number of workers to use
 
@@ -154,12 +159,14 @@ save_to: Path | None
 │ --folder PATH|STR       (required)                      │
 │ --save-to {None}|PATH|STR                               │
 │                         (default: None)                 │
-│ --cell-add-prefix STR   (default: '{chip}-cell-')       │
+│ --obs-add-prefix STR    (default: '{chip}-cell-')       │
+│ --obs-src {cell_label,spot_bin}                         │
+│                         (default: cell_label)           │
+│ --spot-bin-size INT     (default: 50)                   │
 │ --verbose, --no-verbose                                 │
 │                         (default: False)                │
 │ --workers INT           (default: 4)                    │
 │ --enable-tqdm, --no-enable-tqdm                         │
 │                         (default: True)                 │
 ╰─────────────────────────────────────────────────────────╯
-
 ```
