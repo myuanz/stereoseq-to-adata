@@ -86,7 +86,7 @@ def stereo_df_to_adata(
         )
         obs_key = 'bin_xy'
 
-    obs_ids: list[int] | list[str] = df[obs_key].unique().to_list()
+    obs_ids: list[int] | list[str] = df[obs_key].unique().sort().to_list()
 
     gene_map = {g: i for i, g in enumerate(genes)}
     obs_map  = {o: i for i, o in enumerate(obs_ids)}
@@ -225,16 +225,50 @@ def process_stereo_folder(
 
     return adatas
 
-# %%
 
+# df = pl.read_parquet('/data/data0-1/total_gene_T67_macaque_f001_2D_macaque-20240814-cla-all.parquet')
 # r = stereo_df_to_adata(
-#     Path('/data/data0-1/total_gene_T67_macaque_f001_2D_macaque-20240814-cla-all.parquet'),
+#     df,
 #     obs_src='spot_bin',
 #     # obs_src='cell_label',
 #     spot_bin_size=100,
 #     verbose=True
 # )
+# cell_expr = r.X.sum(axis=1).A1
+# %%
+# import matplotlib.pyplot as plt
+# plt.scatter(
+#     r.obsm['spatial_bin'][:, 0], 
+#     r.obsm['spatial_bin'][:, 1], 
+#     s=1, c=cell_expr, alpha=0.5
+# )
+# %%
+# bin_size = 100
 
+# rdf = df.with_columns(
+#     (pl.col('x') // bin_size).alias('bin_x'),
+#     (pl.col('y') // bin_size).alias('bin_y'),
+# ).group_by('bin_x', 'bin_y').agg(
+#     pl.col('umi_count').sum().alias('umi_count')
+# )
+# rdf
+# # %%
+# plt.scatter(
+#     rdf['bin_x'], 
+#     rdf['bin_y'], 
+#     s=1, c=rdf['umi_count'], alpha=0.5
+# )
+# # %%
+# sc.pp.calculate_qc_metrics(
+#     r, inplace=True, log1p=True
+# )
+# # %%
+# plt.scatter(
+#     r.obsm['spatial_bin'][:, 0], 
+#     r.obsm['spatial_bin'][:, 1], 
+#     s=1, c=r.obs['total_counts'], alpha=0.5
+# )
+# %%
 # r = process_stereo_folder(
 #     Path('/mnt/inner-data/sde/total_gene_2D/macaque-20240814-cla-all/'), 
 #     verbose=True,

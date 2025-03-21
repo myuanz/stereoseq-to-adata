@@ -1,6 +1,6 @@
 [project]
 name = "stereoseq-to-adata"
-version = "0.2.0"
+version = "0.2.2"
 description = "Quickly convert parquet files exported from stereo-seq to adata format and add appropriate metadata"
 readme = "README.md"
 requires-python = ">=3.11"
