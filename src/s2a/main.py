@@ -65,8 +65,12 @@ def stereo_df_to_adata(
 
     logger.debug(f'raw df shape: {df.shape}')
     if remove_non_cell_expr:
-        df = df.filter(pl.col('cell_label') != 0)
-        logger.debug(f'df after drop non-cell expr: {df.shape}')
+        if 'cell_label' in df.columns:
+            df = df.filter(pl.col('cell_label') != 0)
+            logger.debug(f'df after drop non-cell expr: {df.shape}')
+        else:
+            logger.warning(f'set {remove_non_cell_expr=} but `cell_label` not in {df.columns=}')
+
     logger.debug(f'df columns: {df.columns}')
     has_rxry = 'rx' in df.columns and 'ry' in df.columns
     logger.debug(f'{has_rxry=}')
@@ -229,10 +233,11 @@ def process_stereo_folder(
 
 
 # df = pl.read_parquet('/data/data0-1/total_gene_T67_macaque_f001_2D_macaque-20240814-cla-all.parquet')
+# df = pl.read_parquet('/home/myuan/下载/total_gene_S83_human_f001_2D_human-Thm-20250911-YNN.parquet').drop('gene_area')
 # r = stereo_df_to_adata(
 #     df,
-#     obs_src='spot_bin',
-#     # obs_src='cell_label',
+#     # obs_src='spot_bin',
+#     obs_src='cell_label',
 #     spot_bin_size=100,
 #     verbose=True
 # )
