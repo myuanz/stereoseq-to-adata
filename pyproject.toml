@@ -8,7 +8,7 @@ dependencies = [
     "anndata>=0.11.3",
     "polars>=1.22.0",
     "scanpy>=1.10.4",
-    "tyro>=0.9.14",
+    "tyro>=1.0.2",
 ]
 authors = [
     {name = "myuan"},
@@ -20,7 +20,7 @@ license = {text = "MIT"}
 
 [dependency-groups]
 dev = [
-    "ipykernel>=6.29.5",
+    "ipykernel>=7.1.0",
 ]
 
 [project.scripts]
