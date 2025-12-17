@@ -69,7 +69,9 @@ def stereo_df_to_adata(
         logger.debug(f'df after drop non-cell expr: {df.shape}')
     logger.debug(f'df columns: {df.columns}')
     has_rxry = 'rx' in df.columns and 'ry' in df.columns
-    logger.debug(f'has_rxry: {has_rxry}')
+    logger.debug(f'{has_rxry=}')
+    has_gene_area = 'gene_area' in df.columns
+    logger.debug(f"{has_gene_area=}")
 
     logger.debug('start mapping...')
     genes = df['gene'].unique().to_list()
@@ -109,7 +111,7 @@ def stereo_df_to_adata(
     adata.var_names = genes
     adata.obs_names = [f'{obs_add_prefix}{o}' for o in obs_ids]
     obs_id_with_area = df.group_by(obs_key).agg(
-        pc('gene_area').first(),
+        pc('gene_area').first() if has_gene_area else pl.lit(0).alias('gene_area'),
         pc('x').mean().alias('x'),
         pc('y').mean().alias('y'),
         *([
